@@ -1,0 +1,279 @@
+# FPGA Tester — 需求与测试项汇总
+
+> 日期: 2026-08
+>
+> **目标协议: LPDDR6 + DDR6** (DDR5/GDDR6 标预留)
+>
+> 标注: \*\*[LP6]\*\*仅LPDDR6 / \*\*[D6]\*\*仅DDR6 / [预留] 非当前目标
+
+***
+
+## 目录
+
+- **L1 平台级** — FPGA/通信/接口 (原1.2/1.4/platform 部分)
+- **L2 协议功能级** — DRAM/PHY/训练/DFI (原1.1/1.5/1.6/1.7)
+- **L3 测试执行级** — 比较/FailBitmap/CPGC/调度 (测试引擎)
+- **L4 调试/DFX级** — 眼图/Trace/fuse/testmode/dump (调试)
+- **L5 软件与流程** — Linux/PXE/升级/框架 (软件)
+- **L6 测试项汇总**
+
+***
+
+# L1. 平台功能 (FPGA/板卡/接口自身)
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R10 | FPGA 实现 | 目标 | P0 | Versal PL 固定层 + 按需加载协议层 |
+| R11 | SOCAMM 接口兼容 | LP6 | P0 | E3.S 形态、I2C SPD、热插拔 |
+| R12 | PS/PC Host 通信 | 目标 | P0 | PCIe / Ethernet / UART |
+| R13 | C API (libddr.so) | 目标 | P0 | MC/PHY/Training/Debug 全功能 API |
+| R26 | Host PC 交互 | 目标 | P0 | PC 界面编写测试序列(Excel/CSV) 经 PCIe 下发 |
+| R27 | 易扩展/易升级。Master + Slave 多 FPGA | 目标 | P0 | Master 解析/分发; Slave 执行; Aurora 互联 |
+| R28 | Combo PHY 测试芯片 | 目标 | P0 | 独立 PHY 芯片, DFI 互联 |
+| R29 | 每 Sub-channel 独立 | LP6 | P0 | 每 Sub-ch 独立命令/地址/数据 |
+| R30 |  |  |  |  |
+| R31 | 多 Die 堆叠 | 目标 | P0 | LP6 PCHP / DDR6 BGA |
+| R32 | 3.2Gbps 低速版本 | 目标 | P0 | per pin |
+| R33 | 12.8-18Gbps 目标速率 | 目标 | P1 | 预留 PHY 高频裕量 |
+| A06 | 串口/网口数量 (CPU+BMC) | P3 |  |  |
+| A07 | 槽位&箱体设计 | P4 |  |  |
+| A08 | debug 工具集整合 | P2 |  |  |
+
+***
+
+## L2. 协议功能级 (DRAM/PHY/训练/DFI)
+
+### L2.1 基础指令集
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R01 | DDR5 全部命令 | 预留 | P1 | ACT/RD/WR/PRE/REF/MRS/MRR 等 |
+| R02 | LPDDR6 协议扩展 | LP6 | P0 | WCK 管理、DPD、Link ECC |
+| R03 | GDDR6 协议扩展 | 预留 | P1 | WRX、PAM4 读 |
+| R04 | DDR6 预留命令空间 | D6 | P1 | 预留 opcode 扩展槽 |
+| R05 | 每 JEDEC 特性独立开关 | 目标 | P0 | FEATURE_GATE |
+| R08 | 1N/2N 命令模式 | 目标 | P0 | 运行时切换 |
+
+### L2.2 训练类型
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R06 | 3 种训练模式 | 目标 | P0 | HW_AUTO/HW_STEP/SW_MANUAL |
+| R07 | 训练类型全覆盖 | 目标 | P0 | DQS2DQ/Gate/WL/VREF/DFE/WCK |
+| R34 | 标准训练接口信号 | 目标 | P0 | training_type/delay/vref 等 |
+| R35 | CS Training | 目标 | P0 | CS→CK delay(0-127 UI) |
+| R36 | CA 总线训练 (CBT) | 目标 | P0 | CA delay + VREF(CA) |
+| R37 | WCK2CK Leveling | LP6 | P0 | WCK-CK 相位对齐 |
+| R38 | Read 1D (RDC) | 目标 | P0 | 读 DQ 眼图中心 |
+| R39 | Write 1D | 目标 | P0 | WCK-DQ 对齐 |
+| R40 | Read 2D | 目标 | P0 | Vref×delay 扫描 |
+| R41 | Write 2D | 目标 | P0 | DRAM 侧 Vref 扫描 |
+| R42 | DFE 系数训练 | 目标 | P1 | tap 扫描 + BER |
+| R43 | RX Offset | 目标 | P1 | per pin |
+| R44 | DCA | 目标 | P1 | ±7 duty |
+| R45 | VRCG | 目标 | P1 | 频率变化校准 |
+| R46 | CA Rank2Rank | 目标 | P1 | 跨 Rank CA 偏移 |
+
+### L2.3 PHY 功能（按协议拆分，负责人：**LP6: 吴锦涛、苏资阳 ｜ D6: 刘家豪、王鹏**）
+
+> 说明：通用需求两列都填；仅适用于某一协议的只填对应列（另一列留空待负责人完善）。
+> （MC）标注 = 该功能由 MC 侧配合实现，PHY 只提供接口。
+
+| 编号 | 需求 (LP6) | 需求 (D6) | 优先级 | 说明 |
+| :---: | :--- | :--- | :---: | :--- |
+| R47 | ZQ 校准 | ZQ 校准 | P0 | Background/Stop/Reset |
+| R48 | CK Sync / SyncOff | CK Sync / SyncOff | P0 | NOP 控制 |
+| R49 | WCK 控制全模式 |  | P0 | LP6: WCK on/auto/off/toggle |
+| R50 | WSOE |  | P0 | LP6: WCK 同步关闭扩展 |
+| R51 | WCK2DQI/DQO Track |  | P0 | LP6: 自动跟踪 |
+| R52 | 刷新模式全支持 | 刷新模式全支持 | P0 | All/Dual/Self/PASR/PARC |
+| R53 | 刷新时序可配 | 刷新时序可配 | P0 | tRFC/tREFI 寄存器 |
+| R54 | IO 配置可编程 | IO 配置可编程 | P0 | Ron/ODT/NT-ODT/RTT_PARK |
+| R55 | Pre-emphasis | Pre-emphasis | P0 | 4 档 |
+| R56 | CTLE | CTLE | P0 | CA/CS/CK 增益 |
+| R57 | DFE 可配 | DFE 可配 | P0 | N-tap |
+| R58 | DVFS |  | P0 | LP6: H/L/B/Q 多域 |
+| R59 | 低功耗模式 | 低功耗模式 | P0 | PD/SR/MPSM |
+| R60 | DBI/Enhanced DBI（MC） | DBI/Enhanced DBI（MC） | P0 | MR93/94 |
+| R61 | Single-Ended | Single-Ended | P0 | CK/WCK/RDQS 单端 |
+| R62 | Link ECC/EDC（MC） | Link ECC/EDC（MC） | P0 | 写/读 Link ECC |
+| R63 | On-Die ECC（MC） | On-Die ECC（MC） | P0 | SBE 纠正/MBE 检测 |
+| R64 | CA Parity | CA Parity | P0 | 2C/4C/6C |
+| R65 | CRC | CRC | P0 | 写/读 CRC |
+| R66 | hPPR/sPPR（MC） | hPPR/sPPR（MC） | P0 | 4-key 解锁 |
+| R68 | Loopback（MC） | Loopback（MC） | P1 | PRBS 环回 |
+| R69 | Meta Data（MC） | Meta Data（MC） | P1 | 128/136/144-bit |
+| R70 | RDQS Preshift |  | P0 | LP6: 前移 2 tWCK |
+| R71 | RDQS Toggle |  | P0 | LP6: 标准/Enhanced/Hammer |
+| R72 | Alert/ABO | Alert/ABO | P0 | Alert 输出 |
+| R73 | FSP | FSP | P0 | 频点记录 |
+| R74 | PRAC（MC） | PRAC（MC） | P0 | 行激活计数 |
+| R75 | ECS（MC） | ECS（MC） | P1 | 检错 scrub |
+| R76 | Temp Sensor | Temp Sensor | P1 | 刷新率调整 |
+| R77 | PDA | PDA | P1 | Per-DRAM Addressability（单 DRAM 可寻址性） |
+| R78 | DQ Swizzle Discovery | DQ Swizzle Discovery | P1 | DQ 数据引脚交叉错位 |
+
+### L2.4 DFI 功能(苏资洋负责完善)
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R79 | DFI 时钟比率 | 目标 | P0 | CA=1:2, DATA=1:4 |
+| R80 | 4-phase DFI | 目标 | P0 | p0-p3 循环 |
+| R81 | 命令地址总线 | 目标 | P0 | dfi_cs/address |
+| R82 | WCK 控制总线 | LP6 | P0 | dfi_wck\_\* |
+| R83 | 写数据总线 | 目标 | P0 | 96[LP6]/120[D6] |
+| R84 | 读数据总线 | 目标 | P0 | 96[LP6]/120[D6] |
+| R85 | Burst24 | 目标 | P0 | 256+32bit |
+| R86 | Burst48 | 目标 | P1 |  |
+| R87 | DFI 初始化握手 | 目标 | P0 | init_start/complete |
+
+### L2.5 协议功能之调度/超时 (可配)
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R18 | 命令调度优先级可配 | 目标 | P0 | 优先级/Page 策略寄存器 |
+| R52 | MC 指定 timing 可配 | 目标 | P0 | (= 时序参数寄存器) |
+| R53 | 刷新时序可配 | 目标 | P0 |  |
+
+***
+
+## L3. 测试引擎(詹健、李元、孙瑞负责完善)
+
+> 本层为运行测试的核心引擎
+
+| 编号 | 需求 | 协议 | 优先级 | 说明 |
+| --- | --- | :---: | :--- | --- |
+| R91 | 硬件数据比较器 | 目标 | P0 | PL 内实时比对 expected vs actual (执行) |
+| R92 | 错误捕捉 RAM (Fail Bitmap) | 目标 | P0 | 记录 {地址,DQ,期望,实际} |
+| R93 | CPGC/ALPG算法模式发生器 | 目标 | P1 | Address/Data/Seq Gen |
+| R25 | 测试序列可编程 | 目标 | P0 | 无需重新综合 FPGA |
+| R96 | 自动测试框架 | 目标 | P1 | test_plan.json→编译→执行 |
+| R97 | 多 Bank 并发 | 通用 | P1 | 4/8/16 Bank |
+| R98 | 命令重排调节 | 通用 | P1 | 随机 RD/WR |
+| R99 | 不定长 ACT | 通用 | P1 | tRAS 随机 |
+| R100 | Rank 切换 | 通用 | P1 | DQS turnaround |
+| R101 | ECC+读写比压力(遗留问题，确认是否有该需求，孙瑞) | 通用 | P1 |  |
+| R102 | 温度+调度 | 通用 | P1 |  |
+| A002 | MC 物理↔DRAM 地址映射可配 | 通用 | P0 |  |
+| A003 | LA Replay（遗留问题，方案难点与实现细节，孙瑞） | 通用 | P1 |  |
+
+***
+
+## L4. 调试DFX/Repair
+
+> 调试能力: 取证/观察/定位 。
+
+| 编号 | 需求 | 优先级 | 说明 |
+| :---: | :--- | :---: | :--- |
+| R16 | 眼图捕获 | P1 | DQ 逐 bit 眼图 (操作数据) |
+| R17 | Trace Buffer | P1 | DFI 命令级 trace |
+| R89 | CM (Chip Probe) | P1 | MBW/MPC/Entry |
+| R90 | Anti-fuse 操作(二级器件测试) | P1 | Fuse Blown/Read（同上，合并） |
+| R94 | DFI 协议解码器 | P1 | 解码为 ACT/RD/WR |
+| R95 | 训练过程可视化 + override | P1 | 画训练眼图 |
+| **DF01** | **Debug/DFX 统一接口** | P2 | C API 统一调用: 画眼图/加载 testmode/打 fuse/改 ODT/driver/dump MR |
+
+## L5. 软件工程级 (OS/固件/流程控制)
+
+| 编号 | 需求 | 优先级 | 说明 |
+| --- | --- | :---: | --- |
+| R19-2x | Linux 冷/热启动 | P0 | UEFI shell |
+| R20 | UEFI + PXE 网络启动 | P0 | 产线部署 |
+| R21 | 自动化固件升级 | P0 | 远程更新 |
+| R22 | 产线 Boot Print 格式 | P0 | stage/--failed/HD_DRAMM |
+| R24 | 寄存器全可读写 | P0 | 通过 APB/AXI |
+| R23 | 超频支持 | P0 | +5% OC |
+| R26 | 训练接口开发(C接口) | P0 |  |
+| **A05** | Linux 管理 SOCAMM 内存（遗留问题：Bender ddr管理，李元和詹健负责研究） | P3 | 需内存管理接口 |
+
+### L6.0 通用测试项
+
+| 类别 | 编号 | 数量 | 说明 |
+| :--- | :---: | :---: | --- |
+| 功能测试 | F01-F14 | 14 | March C+, Checkerboard, Row Hammer, 命令集遍历, RMC, DFE, 子通道, ECC |
+| 时序测试 | T01-T20 | 20 | tRCD/tRP/tCCD/tFAW/tRFC/tREF 边界扫描 + DQS2DQ/Gate/WL/VREF/DFE 训练 |
+| 压力测试 | S01-S12 | 12 | 满带宽读/写/混合, 随机地址, 1N/2N |
+| 刷新测试 | RF01-RF07 | 7 | tREF 边界, 紧急刷新, 刷新污染, 自刷新驻留 |
+| 功耗测试 | P01-P12 | 12 | 各模式电流: ACT/PD/SR/MPSM/DPD/ZQ |
+| 低功耗测试 | LP01-LP10 | 10 | PD/SR/MPSM entry/exit 时序 |
+| 一致性测试 | C01-C10 | 10 | tRCD/tRP/tCCD 时序违规检测 |
+| 稳定性测试 | Z01-Z10 | 10 | 24h/48h/72h 连续运行, 温度循环 |
+| MC 调度测试 | M01-M10 | 10 | 多 Bank, 命令重排, RowPress, Rank 切换, ECC, 读写比, 刷新 |
+| **通用合计** |  | **105** |  |
+
+### L6.1 LPDDR6 专项测试
+
+| 编号 | 测试项 | 说明 |
+| :---: | --- | --- |
+| L01 | DFE/FSDE 验证 | 4 corner × 5 |
+| L02 | 终端 10000 次 | CSTM 系列 |
+| L03 | CSM 重复 |  |
+| L04 | CBT 重复 + CA ODT | CA 总线训练之后 |
+| L05 | CBT 重复 + CA ODT | CA 总线训练 - 同 L04 |
+| L06 | WCK2CK Leveling | **LP6 特有** |
+| L07 | CK Sync NOP |  |
+| L08 | WCK2CK Sync 自动/常开 |  |
+| L09 | WSOE | WCK 同步关闭 |
+| L10 | WCK2DQI/DQO Tracking |  |
+| L11 | RDQS Preshift |  |
+| L12 | FSP 切换 |  |
+| L13 | MRR/MRW 重复 |  |
+| L14 | DCA/DCM sweep |  |
+| L15 | RX Offset Cal |  |
+| L16 | VRCG |  |
+| L17 | RDQS Toggle 三种模式 |  |
+| L18 | Thermal Offset |  |
+| L19 | Refresh 综合 | All/Rest |
+| L20 | PRAC / Alert / ABO |  |
+| L21 | Ron sweep |  |
+| L22 | ODT/NT-ODT |  |
+| L23 | Pre-phasis |  |
+| L24 | DVFS H/L/B/Q | **LP6** |
+| L25 | DCI |  |
+| L26 | 单端/内部 |  |
+| L27 | PowerDown / SRPD |  |
+| L28 | RDQS Half Toggle |  |
+| L29 | hPPR/sPPR |  |
+| L30 | Link ECC/EDC |  |
+| L31 | ECS |  |
+| L32 | OMD/MBE |  |
+| L33 | CBCA-Parity |  |
+| L34 | MBIST |  |
+| L35 | Loopback PRBS |  |
+| L36 | System Meta Data |  |
+| L37 | MixPKG |  |
+
+### L6.2 DDDR6 专项测试
+
+| 编号 | 测试项 | 说明 |
+| :---: | --- | --- |
+| D01 | 2p6/2p3/1p6 IO config | D6 |
+| D02 | CSM | D6 |
+| D03 | CSM 重复 |  |
+| D04 | 参考扫描 |  |
+| D05 | Write Balancing |  |
+| D06 | Write DCA |  |
+| D07 | RDC |  |
+| D08 | Write 训练 |  |
+| D09 | Meta Read/Write |  |
+| D10 | MCME |  |
+| D11 | 1p6 mode |  |
+| D12 | DS2 Second Track |  |
+| D13 | 可编程 Preamble |  |
+| D14 | 输入时钟改变 |  |
+| D15 | DQ Swizzle Discovery |  |
+| D16 | PDA |  |
+| D17 | MRUPDATE |  |
+| D18 | Read Training Pattern 种类 |  |
+| D19 | VREF save 名字 |  |
+| D20 | RFM |  |
+| D21 | RTT_PARK |  |
+| D22 | RX CTLE |  |
+| D23 | Alert+Fault Reg |  |
+| D24 | CK2DQ |  |
+| D25 | CA ODT Strap |  |
+| D26 | CRC Read Link |  |
+| D27 | Compress |  |
+| D28 | BIBIST |  |
+
+***
