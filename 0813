@@ -1,0 +1,39 @@
+背景:
+  我在做一个基于 FPGA 的 LPDDR6/DDR6 内存测试机（CPGC STL 测试机）。
+  基础是 Synopsys LPDDR5 控制器源码，改造到 LPDDR6/DDR6。
+
+你之前根据 LPDDR5 代码画过 4 张架构图（贴在下面），画得很好。
+现在我要基于这些图做修改，改成 LPDDR6/DDR6 + CPGC 测试机的架构。
+
+[这里贴上之前画得好的 4 张图]
+
+不要直接画图。先做一件事：
+
+对照原来的 4 张图，逐张列出"需要改什么"。格式如下：
+
+---
+图1: [原图名称]
+保留不变的部分:
+  - [模块A]: 不变，原因
+  - [模块B]: 不变，原因
+需要修改的部分:
+  - [模块C]: [原状] → [改成什么] + 原因
+需要新增的部分:
+  - [模块D]: 新增，作用是...
+需要删除的部分:
+  - [模块E]: 删除，原因
+---
+
+修改依据（已定决策，不要推翻）:
+1. CPGC 位于 MC 上层，通过 AXI4-Lite/APB 控制 MC，CPGC 不直接驱动 DFI
+2. DFI 始终由 MC 驱动
+3. DFI 数据宽度: 64bit → 96bit（LPDDR6）/ 120bit（DDR6）
+4. DFI 相位: 2-phase → 4-phase
+5. 新增 DFI 协议适配器（DDR5 DFI ↔ LPDDR6/DDR6 DFI）
+6. 新增 R95 比较器 + R96 错误记录（插在 DFI 数据通路上监听）
+7. 新增 CPGC Training Engine（WCK2CK/CS/DCA/DFE 等训练）
+8. 新增 2 个 Sub-channel（LPDDR6 双子通道）
+9. 多 FPGA: 1 Master + 4 Slave，Aurora 互联
+10. 时钟: LMK04828 单源 800MHz + SYSREF 全局对齐
+
+只输出文本修改清单，不画图。我确认后你再画。
