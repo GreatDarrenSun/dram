@@ -1,0 +1,65 @@
+阶段一结果：编译配置 + 仓库清单 + 层次结构
+已完成文件
+目录	文件	状态	关键内容
+00_config	5 files (compile_filelist, defines, include_paths, parameters, active_protocol_profile)	OK	编译配置锁定
+01_inventory	3 files (file, module, package)	OK	259 .sv + 16 .svh
+02_hierarchy	3 files (top, instance, subsystem)	OK	实例化树完整
+04_interfaces	2 files (DFI, clock_reset)	OK	DFI 边界 + 时钟域
+07_protocol_matrix	2 files (common_vs_ddr5, compile_branch_matrix)	OK	协议矩阵
+09_unknowns	1 file	OK	24 unknowns tracked
+阶段核心结论
+1. 编译配置 [CONFIRMED]
+
+组件: DWC_ddrctl_ddr54, v1.21a-lca00 (Synopsys uMCTL5)
+产品: DWC_DDR54_CONTROLLER (DDR5/4 combo)
+协议: DDR5 + DDR4 (运行时由 ddrc_ddr4_mode 选择), LPDDR 未授权
+DQ宽度: 64 bit, DFI比例: 1:4 (DDR5) / 1:2 (DDR4)
+主机接口: AXI multi-port (DDRCTL_SYS_INTF=1)
+Burst: BL16, 应用数据宽: 512bit
+Not DDR5-Only: MEMC_DDR5_ONLY_EN=0, DDR4逻辑也编译在内
+2. 仓库统计 [CONFIRMED]
+
+259 个 .sv 源文件 (~183K LOC), 16 个 .svh 头文件
+最大文件: DWC_ddrctl.sv (15.7K LOC), DWC_ddrctl-undef.svh (31.7K LOC)
+最大子模块: APB (34K LOC), COMMAND/CP (26K LOC), SCHEDULER (22K LOC)
+3. 层次结构 [CONFIRMED]
+
+DWC_ddrctl (TOP)
+├── DWC_ddr_arb_top       (AXI多端口仲裁器)
+├── dfi_ic                (DFI PHY接口)
+│   ├── dfi_ic_cp
+│   └── dfi_ic_dp_ddr
+├── dwc_ddrctl_ddrc       (DDRC核心)
+│   ├── dwc_ddrctl_ddrc_cp_top
+│   │   └── dwc_ddrctl_ddrc_cp (gen_NUM_INST)
+│   │       ├── dwc_ddrctl_ddrc_cpf (前端: ih, teengine, bypass, retry_ctrl)
+│   │       ├── dwc_ddrctl_ddrc_cpe (引擎: ts→bsm+gs, pi, dfi_ctrl)
+│   │       └── dwc_ddrctl_pas_cpe  (PAS备用调度器)
+│   └── dwc_ddrctl_ddrc_dp (数据通路: mr_wrapper, rd_wrapper, memc_wu, rt, dfi_data)
+└── dwc_ddrctl_regmux_div (APB寄存器接口)
+4. 关键发现
+
+存在两套调度器: 传统 ts/gs/bsm 和 PAS pascc/pasci/pasds/pasgs，并行实例化
+CHB/LLC/LPDDR/DDR5-Only 代码均为 dead code (编译排除)
+21个断言模块存在
+CONFIG_REQUIRED (6项 - 阻塞性)
+ID	缺失参数	影响
+CR-001	GEN_DDRC_CPE_EN, gen_NUM_INST	无法确定哪个调度器路径活跃
+CR-002	MEMC_ECC_SUPPORT, MEMC_INLINE_ECC_EN, MEMC_SIDEBAND_ECC_EN	ECC数据通路未定
+CR-003	MEMC_NUM_RANKS, MEMC_BANK_BITS, MEMC_BG_BITS, MEMC_PAGE_BITS, MEMC_BLK_BITS	物理 bank/row/col 配置未知
+CR-004	UMCTL2_DUAL_CHANNEL, UMCTL2_SHARED_AC	多通道配置未知
+CR-005	MEMC_NO_OF_ENTRY, UMCTL2_NUM_BSM	CAM 深度未知
+CR-006	cc_constants.svh 剩余 ~2000行 (~15300-17450)	完整参数集未读
+UNKNOWN (24项, 6 HIGH + 9 MEDIUM + 9 LOW)
+见 09_unknowns/unknowns.md。
+
+下一阶段建议
+按以下优先级推进:
+
+读 cc_constants.svh:15300-17450 - 解锁所有 CONFIG_REQUIRED 参数
+追踪 GEN_DDRC_CPE_EN - 确定活跃调度器路径
+读 dwc_ddrctl_ddrc_cpf.sv - 确认 HIF→CPF 接口连接
+开始 05_flows/write.md - AXI WRITE e2e 追踪
+开始 05_flows/read.md - AXI READ e2e 追踪
+创建 03_module_cards/ - 为核心模块建立卡片
+当前状态: 阶段一完成，等待下一阶段指令。
