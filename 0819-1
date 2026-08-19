@@ -1,0 +1,1028 @@
+# Synopsys DDR5 RTL 阶段 1.5 + 阶段 2A
+
+## 模型
+
+使用：
+
+**DeepSeek V4 Pro-FP4**
+
+开启：
+
+* Thinking / Reasoning
+* Shell
+* Python
+* 代码搜索
+* Git/Repository 工具（如果可用）
+
+本轮仍然禁止修改 RTL。
+
+---
+
+# 当前状态
+
+阶段一已经完成：
+
+* 00_config
+* 01_inventory
+* 02_hierarchy
+* 04_interfaces
+* 07_protocol_matrix
+* 09_unknowns
+
+已经建立初步 hierarchy 和 compile configuration。
+
+但当前仍存在若干 HIGH priority unknown。
+
+本轮不要重新扫描整个 repository。
+
+首先读取现有 Knowledge Base。
+
+只在需要验证证据时按需打开 RTL 文件。
+
+---
+
+# 总体目标
+
+本轮分两步。
+
+## Phase 1.5
+
+关闭影响后续 transaction tracing 的 Active Path / Configuration blockers。
+
+## Phase 2A
+
+在 Phase 1.5 达到 Gate 条件之后，只完成：
+
+**AXI WRITE → DDRC → Scheduler → DFI Command**
+
+以及独立的：
+
+**AXI WDATA → Write Buffer/Data Path → DFI Write Data**
+
+暂时不要分析 READ。
+
+---
+
+# Phase 1.5：Active Path Closure
+
+## 任务 1：完整读取剩余 cc_constants.svh
+
+优先读取当前尚未分析的：
+
+```text
+cc_constants.svh:15300-17450
+```
+
+以及其依赖的相关 define / parameter。
+
+重点搜索并确认：
+
+```text
+GEN_DDRC_CPE_EN
+gen_NUM_INST
+
+MEMC_ECC_SUPPORT
+MEMC_INLINE_ECC_EN
+MEMC_SIDEBAND_ECC_EN
+
+MEMC_NUM_RANKS
+MEMC_BANK_BITS
+MEMC_BG_BITS
+MEMC_PAGE_BITS
+MEMC_BLK_BITS
+
+UMCTL2_DUAL_CHANNEL
+UMCTL2_SHARED_AC
+
+MEMC_NO_OF_ENTRY
+UMCTL2_NUM_BSM
+```
+
+禁止仅报告 value。
+
+还要记录：
+
+```text
+parameter/define
+→ 定义位置
+→ value
+→ 被哪些 generate / module 使用
+→ 对 architecture 的实际影响
+```
+
+生成：
+
+```text
+00_config/resolved_parameters.md
+```
+
+---
+
+# 任务 2：解决 Scheduler Active Path
+
+这是本轮最高优先级任务。
+
+当前已经发现：
+
+```text
+传统路径：
+
+ts
+→ bsm
+→ gs
+→ pi
+→ dfi_ctrl
+```
+
+以及：
+
+```text
+PAS：
+
+pascc
+pasci
+pasds
+pasgs
+...
+```
+
+两套体系均存在。
+
+现在必须回答：
+
+> 对当前 compile configuration，到底哪套路径真正参与 transaction scheduling？
+
+不要只查：
+
+```text
+GEN_DDRC_CPE_EN
+```
+
+的数值。
+
+必须完整追踪：
+
+```text
+parameter / define
+        ↓
+generate condition
+        ↓
+module instance
+        ↓
+enable
+        ↓
+input source
+        ↓
+output
+        ↓
+output mux / selection
+        ↓
+最终 command path
+```
+
+重点分析：
+
+```text
+dwc_ddrctl_ddrc_cp_top
+dwc_ddrctl_ddrc_cp
+dwc_ddrctl_ddrc_cpe
+dwc_ddrctl_pas_cpe
+```
+
+必须区分：
+
+### A. Elaborated
+
+模块被编译 / elaboration。
+
+### B. Instantiated
+
+模块在 hierarchy 中存在 instance。
+
+### C. Enabled
+
+模块实际收到有效 transaction。
+
+### D. Selected
+
+模块输出最终被下游采用。
+
+只有证明到 D，才能称：
+
+```text
+ACTIVE_PATH
+```
+
+否则只能：
+
+```text
+INSTANTIATED_BUT_ACTIVITY_UNKNOWN
+```
+
+输出：
+
+```text
+02_hierarchy/active_scheduler_path.md
+```
+
+最终必须给出类似：
+
+```text
+HIF
+ ↓
+CPF
+ ↓
+xxxx
+ ↓
+ACTIVE scheduler
+ ↓
+xxxx
+ ↓
+PI
+ ↓
+DFI
+```
+
+但必须完全依据实际 RTL。
+
+---
+
+# 任务 3：确认 DDR5 / DDR4 Runtime Mode
+
+不要再把：
+
+```text
+MEMC_DDR4_EN=1
+MEMC_DDR5_ONLY_EN=0
+```
+
+解释为“当前正在运行 DDR5”。
+
+它只能证明：
+
+```text
+DDR4 logic is compiled
+DDR5 capability exists
+```
+
+继续追踪：
+
+```text
+ddrc_ddr4_mode
+```
+
+必须回答：
+
+```text
+声明在哪里？
+谁驱动？
+reset/default 是多少？
+来自寄存器还是 pin？
+哪个 APB register 控制？
+初始化什么时候确定？
+仿真/testbench 是否对它赋值？
+```
+
+执行类似：
+
+```bash
+rg -n "\bddrc_ddr4_mode\b" .
+```
+
+然后沿 producer 一直向前追。
+
+如果可以证明：
+
+```text
+ddrc_ddr4_mode = 0
+```
+
+才允许写：
+
+```text
+[CONFIRMED] DDR5 active
+```
+
+如果无法证明：
+
+写：
+
+```text
+[RUNTIME_CONFIG_REQUIRED]
+```
+
+此时后续 WRITE Flow 可以使用：
+
+```text
+DDR5-mode scenario
+```
+
+进行分析，但必须明确这是：
+
+```text
+CONTROLLED_ANALYSIS_ASSUMPTION
+```
+
+不能伪装为代码事实。
+
+生成：
+
+```text
+00_config/runtime_protocol_selection.md
+```
+
+---
+
+# 任务 4：解决 HIF / XPI / DDRC 拓扑
+
+当前不能假定：
+
+```text
+arb_top → ddrc
+```
+
+也不能假定一定经过 XPI。
+
+完整分析：
+
+```text
+DWC_ddr_arb_top
+xpi
+dwc_ddrctl_ddrc
+dwc_ddrctl_ddrc_cpf
+```
+
+寻找 Host Request 的真实连接。
+
+从 AXI request 出发，至少追到：
+
+```text
+CPF transaction input
+```
+
+回答：
+
+```text
+AXI arbiter 输出是什么 signal？
+是否进入 XPI？
+XPI 是否只是其中一个 port/interface layer？
+XPI 内部是否 buffering / translation？
+DDRC CPF 接收到的具体 request interface 是什么？
+```
+
+输出：
+
+```text
+04_interfaces/hif_xpi_ddrc_path.md
+```
+
+必须画出：
+
+```text
+AXI
+ ↓
+?
+ ↓
+?
+ ↓
+CPF
+```
+
+并且每一级列：
+
+```text
+File
+Module
+Instance
+Signal
+Producer
+Consumer
+```
+
+关闭 U-003。
+
+---
+
+# 任务 5：ECC Configuration Closure
+
+确认：
+
+```text
+MEMC_ECC_SUPPORT
+MEMC_INLINE_ECC_EN
+MEMC_SIDEBAND_ECC_EN
+```
+
+并判断：
+
+```text
+ECC disabled
+inline ECC
+sideband ECC
+other
+```
+
+为什么本项必须在 WRITE DATA tracing 前完成：
+
+ECC 可能改变：
+
+```text
+WDATA
+→ buffer
+→ ECC
+→ memory datapath
+```
+
+因此不能在 ECC 未确认情况下宣布 write data flow 已完成。
+
+输出：
+
+```text
+00_config/ecc_profile.md
+```
+
+---
+
+# 任务 6：Channel / Rank / Geometry
+
+确认：
+
+```text
+UMCTL2_DUAL_CHANNEL
+UMCTL2_SHARED_AC
+MEMC_NUM_RANKS
+MEMC_BANK_BITS
+MEMC_BG_BITS
+MEMC_PAGE_BITS
+MEMC_BLK_BITS
+```
+
+输出：
+
+```text
+00_config/memory_geometry.md
+```
+
+如果这些参数仅改变 array dimension / index width，而不改变 WRITE control path，可以保留为参数化信息。
+
+不要因为 rank/bank 数没有彻底确认而阻塞所有架构分析。
+
+---
+
+# Phase 1.5 Gate
+
+完成上述任务后重新更新：
+
+```text
+09_unknowns/unknowns.md
+```
+
+要求：
+
+## 必须关闭
+
+```text
+U-001 Scheduler active path
+U-003 HIF/XPI/DDRC connection
+U-004 ECC configuration
+```
+
+## U-002
+
+DDR5/DDR4 runtime mode：
+
+最好关闭。
+
+如果因为缺少 testbench/runtime register programming 无法关闭，则允许保持：
+
+```text
+RUNTIME_CONFIG_REQUIRED
+```
+
+但必须建立：
+
+```text
+DDR5-mode controlled analysis scenario
+```
+
+## U-005 / U-006
+
+如果不影响 transaction topology，可以保留 parameterized。
+
+---
+
+# Phase 1.5 验收报告
+
+生成：
+
+```text
+10_validation/phase1_5_active_path_closure.md
+```
+
+包含：
+
+| Item | Before | After | Evidence | Status |
+| ---- | ------ | ----- | -------- | ------ |
+
+最后给出：
+
+```text
+PHASE2_WRITE_READY = YES / NO
+```
+
+只有：
+
+```text
+YES
+```
+
+才能继续 Phase 2A。
+
+---
+
+# Phase 2A：AXI WRITE End-to-End Trace
+
+不要同时做 READ。
+
+WRITE 必须拆成两个完全独立的 flow。
+
+---
+
+# Flow A：WRITE Command / Request Path
+
+从：
+
+```text
+AXI AW
+```
+
+开始。
+
+不要直接从 scheduler 开始。
+
+完整追踪：
+
+```text
+AXI AW
+ ↓
+AXI port
+ ↓
+arbiter
+ ↓
+HIF/XPI
+ ↓
+CPF
+ ↓
+request queue
+ ↓
+address decode
+ ↓
+scheduler request
+ ↓
+bank state
+ ↓
+row hit/miss
+ ↓
+timing qualification
+ ↓
+WR issue
+ ↓
+PI / command pipeline
+ ↓
+DFI command
+```
+
+以上只是需要回答的问题。
+
+**禁止把这个示意图当成预设架构。**
+
+如果真实 RTL 顺序不同，以 RTL 为准。
+
+---
+
+# 每一级强制记录
+
+使用以下表格：
+
+| Step | File | Module | Instance | Input Signal | Output Signal | Condition | Next Consumer | Confidence |
+| ---- | ---- | ------ | -------- | ------------ | ------------- | --------- | ------------- | ---------- |
+
+例如：
+
+```text
+AW request
+ ↓
+signal A
+ ↓
+module X
+ ↓
+signal B
+ ↓
+module Y
+```
+
+signal A → B 中间不能凭自然语言跳过 module。
+
+---
+
+# Address Path 单独分析
+
+WRITE request flow 中必须独立回答：
+
+```text
+AXI address 在哪里第一次保存？
+在哪里进行地址转换？
+rank/bank/bg/row/column 在哪里形成？
+row hit/miss 在哪里比较？
+open-row 信息在哪里保存？
+```
+
+如果 address mapping 是 register configurable：
+
+必须追踪：
+
+```text
+APB configuration
+→ mapping logic
+→ decoded address
+```
+
+---
+
+# Queue Path
+
+回答：
+
+```text
+transaction 在哪里排队？
+queue entry 内容是什么？
+entry index / tag 怎么生成？
+什么时候 allocate？
+什么时候 dequeue？
+什么时候认为 transaction completed？
+```
+
+---
+
+# Scheduler Path
+
+基于 Phase 1.5 已确认的 ACTIVE scheduler。
+
+回答：
+
+```text
+request 如何进入 scheduler？
+scheduler 候选集合是什么？
+priority 条件是什么？
+bank legality 谁提供？
+timing eligibility 谁提供？
+最终 grant / issue signal 是什么？
+```
+
+不要开始分析另一套 inactive scheduler。
+
+inactive scheduler 只建立 reference note。
+
+---
+
+# Bank State
+
+WRITE Flow 至少追踪：
+
+```text
+bank open/closed
+open row
+row hit
+row conflict
+ACT needed
+PRE needed
+WR allowed
+```
+
+记录实际 register / array / signal。
+
+---
+
+# Timing
+
+至少确认 WRITE path 会用到哪些 timing qualification。
+
+例如可能涉及：
+
+```text
+tRCD
+tRP
+tRAS
+tRC
+tCCD
+tWTR
+tRRD
+FAW
+```
+
+但：
+
+**禁止因为 DDR5 spec 中存在某 timing，就假设当前模块一定检查它。**
+
+只能记录在实际 RTL WRITE issue path 中找到的约束。
+
+---
+
+# WR Command
+
+重点找：
+
+```text
+WR request
+→ WR internal opcode
+→ command encoder
+→ DFI address/control
+```
+
+必须回答：
+
+> RTL 中哪个具体 signal 可以认为“WRITE command 已经正式 issue”？
+
+这将作为以后 waveform 验证的重要 observation point。
+
+---
+
+# Flow B：WRITE DATA Path
+
+独立从：
+
+```text
+AXI WDATA
+```
+
+开始。
+
+追踪：
+
+```text
+AXI WDATA
+ ↓
+input buffer
+ ↓
+write queue / RAM
+ ↓
+write datapath
+ ↓
+ECC（如果 enabled）
+ ↓
+DFI data formatting
+ ↓
+dfi_wrdata
+```
+
+仍然只是待验证示意。
+
+实际结构以 RTL 为准。
+
+---
+
+# WDATA 必须回答
+
+```text
+512-bit application data 在哪里进入？
+在哪里保存？
+write command 和 write data 如何关联？
+transaction/tag/index 如何对应？
+什么时候读取 WDATA RAM？
+是否存在 width conversion？
+是否存在 burst packing？
+是否存在 byte mask？
+是否存在 ECC insertion？
+最终如何形成 dfi_wrdata？
+```
+
+---
+
+# Command/Data Join Point
+
+这是 Phase 2A 的关键问题之一。
+
+必须回答：
+
+> WRITE command path 和 WRITE data path 在什么逻辑条件下重新关联？
+
+例如：
+
+```text
+transaction ID
+queue index
+CAM ID
+slot
+tag
+pointer
+```
+
+具体是什么必须通过 RTL 判断。
+
+禁止用 DDR Controller 常识猜测。
+
+---
+
+# 最终 DFI Boundary
+
+记录 WRITE 相关所有最终 DFI signals。
+
+例如实际存在的：
+
+```text
+dfi_address
+dfi_bank
+dfi_cs
+dfi_wrdata
+dfi_wrdata_en
+dfi_wrdata_mask
+...
+```
+
+不要预设 signal 名。
+
+以当前 RTL 为准。
+
+建立：
+
+```text
+internal signal
+→ final DFI signal
+```
+
+映射表。
+
+---
+
+# Phase 2A 输出文件
+
+生成：
+
+```text
+05_flows/write.md
+```
+
+建议内部包括：
+
+```text
+1. Executive summary
+
+2. Request/Command path
+
+3. Address path
+
+4. Queue allocation
+
+5. Scheduler
+
+6. Bank state
+
+7. Timing qualification
+
+8. WR command generation
+
+9. Write data path
+
+10. Command/Data association
+
+11. DFI boundary
+
+12. Evidence table
+
+13. Remaining unknowns
+```
+
+---
+
+# 创建核心 Module Cards
+
+只给 WRITE flow 真正经过的核心模块建立：
+
+```text
+03_module_cards/
+```
+
+不要一口气给 259 个 module 建卡片。
+
+优先：
+
+```text
+arb_top
+XPI/HIF相关
+CPF
+实际 active scheduler
+BSM/bank-state相关
+PI/command相关
+write datapath
+DFI interface相关
+```
+
+---
+
+# Evidence 强制规则
+
+任何 End-to-End path 中出现：
+
+```text
+A → B → C
+```
+
+都必须证明：
+
+```text
+A output
+→ instance port connection
+→ B input
+```
+
+如果中间找不到：
+
+标记：
+
+```text
+TRACE_GAP
+```
+
+不要根据 signal 名相似强行连接。
+
+---
+
+# 防止上下文幻觉
+
+每处理一个 subsystem 后：
+
+1. 固化结果到 Markdown。
+2. 清楚记录 evidence。
+3. 下一模块分析时先读取相关 Module Card。
+4. 再按需打开 RTL。
+
+不要反复把所有源代码塞进上下文。
+
+---
+
+# Phase 2A 验收标准
+
+随机从 AXI WRITE transaction 开始，应能够回答：
+
+```text
+AW 到哪里？
+什么时候 allocate？
+address 如何 decode？
+request 到哪个 scheduler？
+bank legality 谁判断？
+timing 谁判断？
+什么时候正式 issue WR？
+WR 如何到达 DFI？
+
+WDATA 到哪里？
+存在哪里？
+如何与 command 对应？
+何时取出？
+如何形成 DFI data？
+```
+
+每一级必须给：
+
+```text
+File
+Module
+Signal
+Evidence
+```
+
+不得出现无法解释的跨模块跳跃。
+
+---
+
+# 最终停止条件
+
+完成：
+
+```text
+Phase 1.5
++
+WRITE Phase 2A
+```
+
+以后停止。
+
+暂时不要执行：
+
+```text
+READ flow
+REF flow
+MRW/MRR
+DDR5 → DDR6 migration
+```
+
+最后输出：
+
+```text
+1. Phase 1.5 blocker closure
+2. WRITE command path
+3. WRITE data path
+4. command/data join point
+5. remaining TRACE_GAP
+6. updated UNKNOWN list
+7. 下一阶段建议
+```
