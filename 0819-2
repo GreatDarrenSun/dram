@@ -1,0 +1,37 @@
+Phase 1.5 + Phase 2A 完成总结
+已完成文件清单
+目录	文件	内容
+00_config/	resolved_parameters.md	所有 CONFIG_REQUIRED 参数已解决
+00_config/	runtime_protocol_selection.md	ddrc_ddr4_mode 完整追踪；RUNTIME_CONFIG
+00_config/	ecc_profile.md	ECC 全部关闭
+00_config/	memory_geometry.md	4 rank × 8BG × 4bank = 128 banks
+02_hierarchy/	active_scheduler_path.md	DDR4→Legacy CPE, DDR5→PAS CPE
+04_interfaces/	hif_xpi_ddrc_path.md	AXI→XPI→PA→HIF_CMD→DDRC→CPF 拓扑
+05_flows/	write.md	完整 AXI WRITE e2e
+03_module_cards/	ih.md, te_wr_cam.md, pascc_bankctrl.md, pasds_bsm.md, paspi_decoder.md, memc_wu.md, cpedfiic.md (7 cards)	
+09_unknowns/	unknowns.md	更新：HIGH 从 6 降至 1 (RUNTIME only)
+10_validation/	phase1_5_active_path_closure.md	Gate 报告
+WRITE E2E AXI 验收
+随机选择 AXI WRITE transaction，可回答：
+
+问题	答案
+AW 到哪里？	DWC_ddr_umctl2_xpi (arb_top/xpi) → arbiter → hif_cmd → cpf
+什么时候 allocate？	ih_te_wr_valid → te_wr_cam load_cam
+address 如何 decode？	ih_address_map_wrapper → {rank, bg_bank, page, block, word}
+request 到哪个 scheduler？	PAS CPE: pascc → pasos → pasgs
+bank legality 谁判断？	pascc_bankctrl (page hit/miss → WR/ACT decision)
+timing 谁判断？	pasds_bsm (tRCD, tCCD_w, tFAW, tRRD, tWTR)
+什么时候正式 issue WR？	dec_wr_vld at paspi_dec.sv:410
+WR 如何到达 DFI？	paspi_phdec CA[0/1] encoding → paspi_dfic → cpedfiic (DDR5 path)
+WDATA 到哪里？	wu_wdata_if → memc_wu → WDATARAM
+如何与 command 对应？	CAM entry number → waddr_in → WDATARAM address
+何时取出？	mr_ram_rd_pipeline (timed by DFI command delay)
+如何形成 DFI data？	mr_data_steering → dfi_data → dfi_wrdata
+剩余 TRACE_GAP
+ID	说明	影响
+GAP-001	mr_ram_rd_pipeline.sv 未读 - WDATARAM 读时序细节	不影响 command 路径
+GAP-002	DDR5 1N vs 2N 调度器活跃变体未确认	两者都存在，不影响 WRITE issue 时机
+下一阶段建议
+Phase 2B: READ flow - 追踪 AXI AR→DDRC→DFI RD→DFI rdata→host rdata 完整路径
+Phase 3: 其他命令 - ACT/PRE/REF/ZQ/MRW/MRR 命令流
+Phase 4: DDR5 1N/2N 确认 - 解析 pasgs_ddr5_1n_fr4 vs pasgs_ddr5_2n_fr4 的活跃分支
