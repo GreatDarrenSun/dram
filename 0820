@@ -1,0 +1,39 @@
+本轮完成总结
+Phase 2A.5: DDR5 1N/2N
+结论	证据
+2N mode (DEFAULT)	dfi_2n_r 复位值=0，即 reg_2n_mode=0 → 2N variant selected
+运行时可选	DFI 协议命令 SCMD_DFI2N 可切换
+两个 variant	始终编译并实例化，运行时 mux 选择
+GAP-001 关闭
+问题	答案
+WDATARAM 读地址	mr_me_raddr = {CAM_entry, subword_addr}
+读触发	latency_timer[l] 在 WR 命令时加载 mr_t_wrdata，减到1时读 RAM
+流水线	3级（cmd→re + RD_LATENCY + latch）
+有效信号	ram_data_vld at line 1405
+WDATA_PATH_DELAY	4 cycles
+Phase 2B: AXI READ e2e
+路径	关键点	信号
+AR 入口	XPI arvalid_l → PA pa_arvalid	AR→ENIF→HIF→CPF
+事务分配	te_rd_cam.sv:329 load_cam	32-entry RD CAM
+调度器	PAS CC ~wr_mode & rd_ok_w & rd_page_hit	与 WR 共用框架，mode 互斥
+RD issue	dec_rd_vld at paspi_dec.sv:412	DDR5 opcode=11101
+数据返回	phy_ddrc_rdata → rt → rd → hif_rdata	DBI 解码后直接输出
+事务匹配	RT FIFO: push on RD, pop on data return	tag = hif_rdata_token
+新增文件
+文件	内容
+02_hierarchy/ddr5_1n_2n_selection.md	1N/2N 选择机制
+05_flows/write.md	新增观察点 + GAP-001关闭
+05_flows/read.md	完整 READ e2e
+03_module_cards/te_rd_cam.md	Read CAM 卡片
+03_module_cards/rt.md	Read Tracker 卡片
+10_validation/phase2b_read_e2e_validation.md	Phase 2B 验收
+Gate 状态
+READY_FOR_SIMULATION_VALIDATION = YES
+当前 Knowledge Base 覆盖：
+
+编译配置（全部 resolve）
+AXI WRITE 完整端到端（command + data，无 gap）
+AXI READ 完整端到端（command + data + 事务匹配）
+DDR5 2N 默认模式确认
+ECC 已关闭确认
+4 rank × 32 bank × 18 row × 7 col 几何确认
