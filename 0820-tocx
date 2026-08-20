@@ -1,0 +1,682 @@
+# Task: Synopsys DDR5 Controller Phase 2C
+# WRITE / READ Dynamic Simulation Validation
+
+你现在继续作为该 Synopsys DDR5 Controller RTL 项目的 RTL 架构师和验证工程师。
+
+当前已经完成：
+
+Phase 1:
+- compile configuration
+- inventory
+- hierarchy
+- protocol/config matrix
+
+Phase 1.5:
+- active scheduler closure
+- DDR5 → PAS CPE
+- DDR4 → Legacy CPE
+- ECC disabled
+- memory geometry resolved
+- HIF/XPI/DDRC topology resolved
+
+Phase 2A:
+- AXI WRITE command path complete
+- AXI WRITE data path complete
+- command/data association complete
+- no WRITE TRACE_GAP
+
+Phase 2A.5:
+- DDR5 1N/2N selection analyzed
+- reset/default selects 2N variant
+- SCMD_DFI2N runtime switching found
+- WDATARAM read pipeline completed
+- WRITE data path delay analyzed
+
+Phase 2B:
+- AXI READ request path complete
+- DFI READ command path complete
+- PHY read-return path complete
+- RT FIFO transaction matching complete
+- no blocking READ TRACE_GAP
+
+Current gate:
+
+READY_FOR_SIMULATION_VALIDATION = YES
+
+==================================================
+0. 本阶段核心原则
+==================================================
+
+本阶段目标不是继续扩展静态 RTL 分析。
+
+目标是：
+
+用实际 compile/elaboration/simulation/waveform/log，
+验证此前 Knowledge Base 中的 WRITE/READ transaction model。
+
+禁止修改 DUT RTL。
+
+可以：
+
+- 新建 testbench
+- 修改 testbench
+- 新建 simulation script
+- 新建 waveform script
+- 新建 monitor/assertion
+- 新建 Python log parser
+
+但必须保证：
+
+RTL_MODIFIED = NO
+
+不要为了让仿真 PASS 而修改 Controller RTL。
+
+==================================================
+1. 首先检查现有 Simulation Environment
+==================================================
+
+不要假定使用某一种 simulator。
+
+首先寻找：
+
+- existing testbench
+- simulation filelist
+- compile scripts
+- VCS scripts
+- XSim scripts
+- Xcelium scripts
+- Questa scripts
+- Makefile
+- run.sh
+- run.tcl
+- regression scripts
+
+确认当前可实际运行的 simulator。
+
+生成：
+
+10_validation/simulation_environment.md
+
+记录：
+
+Simulator:
+Version:
+Top:
+TB top:
+Filelist:
+Defines:
+Runtime protocol configuration:
+DDR5 mode setup:
+2N mode setup:
+Existing tests:
+Waveform support:
+
+如果没有可运行 simulation environment：
+
+不要伪造动态结果。
+
+标记：
+
+SIM_ENV_BLOCKED
+
+并输出缺失项后停止。
+
+==================================================
+2. Simulation Configuration 必须和静态分析一致
+==================================================
+
+验证：
+
+当前 simulation 是否真正配置为：
+
+DDR5 mode
+
+而不是仅仅：
+
+MEMC_DDR4_EN = 1
+MEMC_DDR5_ONLY_EN = 0
+
+必须找到 runtime：
+
+ddrc_ddr4_mode
+
+实际值。
+
+必须在 simulation 中观察它。
+
+同时观察：
+
+dfi_2n_r
+reg_2n_mode
+1N/2N select/mux output
+
+验证静态分析：
+
+DEFAULT → 2N active variant
+
+如果 simulation 与静态分析不符：
+
+不要修改结论来迎合旧 Knowledge Base。
+
+标记：
+
+STATIC_DYNAMIC_MISMATCH
+
+并找到原因。
+
+==================================================
+3. 建立统一 Observation Point Manifest
+==================================================
+
+基于：
+
+05_flows/write.md
+05_flows/read.md
+
+创建：
+
+10_validation/transaction_observation_points.md
+
+每个信号记录：
+
+| ID | Transaction | Stage | File | Module | Signal | Meaning |
+
+WRITE 至少覆盖：
+
+W01 AXI AW valid/ready handshake
+W02 HIF request
+W03 WR CAM allocation
+W04 PAS candidate
+W05 page hit/miss/bank decision
+W06 timing eligible
+W07 dec_wr_vld
+W08 PI command
+W09 DFI WR command
+W10 WDATARAM read trigger
+W11 RAM data valid
+W12 DFI wrdata enable
+W13 DFI wrdata
+
+READ 至少覆盖：
+
+R01 AXI AR valid/ready
+R02 HIF READ request
+R03 RD CAM allocation
+R04 PAS candidate
+R05 bank decision
+R06 timing eligible
+R07 dec_rd_vld
+R08 PI RD
+R09 DFI RD command
+R10 RT FIFO push
+R11 PHY/DFI read data valid
+R12 RT FIFO pop
+R13 hif_rdata_token
+R14 HIF read-data valid
+R15 AXI RVALID
+R16 AXI RLAST/completion
+
+如果实际信号名称不同，以 RTL 为准。
+
+禁止为了符合该列表而创造信号。
+
+==================================================
+4. Test 1：Single WRITE
+==================================================
+
+执行最简单的一笔 AXI WRITE。
+
+目标：
+
+验证整个 WRITE control/data chain。
+
+记录：
+
+AW handshake cycle = C0
+
+然后以 C0 为 reference，记录：
+
+WR CAM allocation
+PAS candidate
+bank/timing eligibility
+dec_wr_vld
+PI issue
+DFI WR command
+WDATARAM read trigger
+ram_data_vld
+DFI wrdata enable
+DFI wrdata
+
+输出：
+
+| Event | Signal | Absolute Cycle | Delta from Previous | Delta from C0 |
+
+重点验证此前静态结论：
+
+WDATA_PATH_DELAY = 4 cycles
+
+注意：
+
+必须首先定义这 4 cycles 的两个端点具体是什么：
+
+From:
+什么 signal/event
+
+To:
+什么 signal/event
+
+例如不能只写：
+
+“write data delay = 4”
+
+必须写：
+
+Signal A assertion
+→ 4 controller clock cycles
+→ Signal B assertion
+
+如果 simulation 不等于静态分析：
+
+标：
+
+MISMATCH
+
+并重新解释 RTL pipeline。
+
+==================================================
+5. WRITE Command/Data Alignment
+==================================================
+
+重点验证：
+
+WR command
+与
+DFI wrdata
+
+为什么在正确时刻配对。
+
+动态观察：
+
+CAM entry
+waddr_in
+mr_me_raddr
+latency_timer
+RAM read
+ram_data_vld
+DFI command
+DFI write-data enable
+
+必须证明：
+
+同一 AXI WRITE transaction 的 command/data
+在 simulation 中保持正确关联。
+
+输出：
+
+10_validation/write_command_data_alignment.md
+
+==================================================
+6. Test 2：Single READ
+==================================================
+
+执行：
+
+AXI AR
+→ DDR5 READ
+→ PHY/DFI return
+→ AXI RDATA
+
+记录：
+
+AR handshake
+RD CAM allocation
+PAS candidate
+dec_rd_vld
+DFI RD
+RT FIFO push
+DFI/PHY rdata valid
+RT FIFO pop
+hif_rdata_token
+AXI RVALID
+AXI RLAST
+
+建立 cycle timeline。
+
+输出：
+
+10_validation/read_single_transaction_timeline.md
+
+==================================================
+7. 验证 RT FIFO Transaction Matching
+==================================================
+
+静态分析已经得到：
+
+RD issue
+→ RT FIFO push
+
+DFI data return
+→ RT FIFO pop
+
+tag:
+hif_rdata_token
+
+现在必须动态验证。
+
+至少记录一笔 transaction：
+
+AXI AR ID
+internal transaction/CAM entry
+RT FIFO entry
+DFI RD
+DFI return
+hif_rdata_token
+AXI RID
+
+建立：
+
+AXI Request Identity
+→ internal metadata
+→ RT FIFO
+→ returned data
+→ AXI response identity
+
+输出：
+
+10_validation/read_transaction_matching.md
+
+==================================================
+8. Test 3：Back-to-Back READ
+
+这是必须执行的测试。
+
+至少连续产生：
+
+READ A
+READ B
+
+优先选择：
+
+不同 AXI ID
+
+如果现有环境支持，可以增加到：
+
+READ A
+READ B
+READ C
+READ D
+
+目的不是性能测试。
+
+目的是验证：
+
+RT FIFO 在多个 outstanding transaction 下
+是否真的按照静态理解匹配返回数据。
+
+观察：
+
+request order
+scheduler issue order
+RT FIFO push order
+DFI return order
+RT FIFO pop order
+AXI RID order
+
+回答：
+
+Controller 是否允许内部 READ reorder？
+
+RT FIFO 保存的是：
+
+issue order
+还是
+request order
+还是
+其他 order？
+
+必须用实际 waveform 回答。
+
+==================================================
+9. Test 4：Row Hit / Row Miss
+
+至少构造两类 WRITE 或 READ：
+
+Case A:
+同一 open row → row hit
+
+Case B:
+同一 bank 不同 row → row conflict/miss
+
+动态观察：
+
+pascc_bankctrl
+
+确认：
+
+page hit/miss
+ACT decision
+PRE decision
+RD/WR eligibility
+
+验证静态分析对 Bank Controller 的理解。
+
+输出：
+
+10_validation/bank_state_dynamic_validation.md
+
+==================================================
+10. Timing Qualification Spot Check
+==================================================
+
+不要求这一阶段穷举所有 DDR5 timing。
+
+只选 2~4 个当前 READ/WRITE path 已确认存在的 timing rule。
+
+优先：
+
+tRCD
+tCCD
+tWTR
+
+如果 RTL active path 中适合，再选择其他。
+
+方法：
+
+找到前序 command event
+→ timing counter/load
+→ countdown/state
+→ eligibility false
+→ eligibility true
+→ RD/WR issue
+
+必须动态证明至少一个完整例子：
+
+ACT
+→ blocked
+→ tRCD satisfied
+→ RD/WR becomes eligible
+
+输出：
+
+10_validation/timing_dynamic_spotcheck.md
+
+==================================================
+11. 2N Dynamic Validation
+==================================================
+
+观察 default configuration：
+
+dfi_2n_r
+reg_2n_mode
+variant select
+PASGS output
+PI input
+DFI output
+
+证明 reset 后：
+
+2N variant selected
+
+如果现有 testbench/environment 能安全发送：
+
+SCMD_DFI2N
+
+则增加一个 mode-switch testcase：
+
+2N
+→ command
+→ 1N
+
+或反向。
+
+观察：
+
+select/mux 是否真的切换。
+
+但：
+
+如果当前 testbench 没有现成安全路径，
+不要为了测试这个功能大幅修改环境。
+
+可以只验证 DEFAULT 2N。
+
+==================================================
+12. Static vs Dynamic Crosscheck Matrix
+==================================================
+
+建立：
+
+10_validation/static_dynamic_crosscheck.md
+
+格式：
+
+| ID | Static Conclusion | Dynamic Evidence | Result |
+|----|-------------------|------------------|--------|
+| SD-001 | DDR5 uses PAS | waveform | PASS/FAIL |
+| SD-002 | 2N default | waveform | PASS/FAIL |
+| SD-003 | WR CAM allocation point | waveform | PASS/FAIL |
+| SD-004 | dec_wr_vld issue point | waveform | PASS/FAIL |
+| SD-005 | WDATARAM association via CAM entry | waveform | PASS/FAIL |
+| SD-006 | WDATA_PATH_DELAY | waveform | PASS/FAIL |
+| SD-007 | RD CAM allocation | waveform | PASS/FAIL |
+| SD-008 | dec_rd_vld issue point | waveform | PASS/FAIL |
+| SD-009 | RT FIFO push on RD | waveform | PASS/FAIL |
+| SD-010 | RT FIFO pop on data return | waveform | PASS/FAIL |
+| SD-011 | hif_rdata_token restores transaction | waveform | PASS/FAIL |
+| SD-012 | AXI response identity preserved | waveform | PASS/FAIL |
+
+对 FAIL：
+
+必须回到 RTL 重新分析。
+
+不要修改 waveform interpretation 来维护原来的静态结论。
+
+==================================================
+13. Waveform Evidence
+
+如果 simulator 支持 waveform：
+
+保存：
+
+VCD / WDB / FSDB / SHM
+
+以及 waveform signal list。
+
+创建：
+
+10_validation/waveform_signal_manifest.md
+
+不要把整个设计所有 signal 加入 waveform。
+
+只加入 transaction observation points
+及其必要 parent/internal state。
+
+==================================================
+14. Assertion / Monitor
+
+允许新增非侵入式 monitor/assertion。
+
+例如：
+
+AXI handshake monitor
+WR issue monitor
+RD issue monitor
+DFI command logger
+DFI data logger
+transaction token logger
+
+但必须：
+
+DUT RTL untouched
+
+所有 monitor 放 testbench / bind / verification area。
+
+==================================================
+15. 最终 Gate
+
+生成：
+
+10_validation/phase2c_dynamic_validation.md
+
+最终必须报告：
+
+SIMULATION_ENVIRONMENT =
+PASS / BLOCKED
+
+DDR5_RUNTIME_MODE =
+CONFIRMED / FAIL
+
+DDR5_2N_DEFAULT =
+PASS / FAIL
+
+WRITE_COMMAND_PATH_DYNAMIC =
+PASS / FAIL
+
+WRITE_DATA_PATH_DYNAMIC =
+PASS / FAIL
+
+WRITE_COMMAND_DATA_ALIGNMENT =
+PASS / FAIL
+
+READ_COMMAND_PATH_DYNAMIC =
+PASS / FAIL
+
+READ_RETURN_PATH_DYNAMIC =
+PASS / FAIL
+
+READ_TRANSACTION_MATCHING =
+PASS / FAIL
+
+BACK_TO_BACK_READ =
+PASS / FAIL / NOT_SUPPORTED
+
+BANK_STATE_SPOTCHECK =
+PASS / FAIL
+
+TIMING_SPOTCHECK =
+PASS / FAIL
+
+STATIC_DYNAMIC_MISMATCHES =
+N
+
+RTL_MODIFIED =
+NO
+
+READY_FOR_COMMAND_DEEP_DIVE =
+YES / NO
+
+==================================================
+16. 停止条件
+
+完成 Phase 2C 后停止。
+
+不要继续分析：
+
+ACT/PRE architecture
+REF
+ZQ
+MRW/MRR
+power management
+DDR5→DDR6
+
+等待下一阶段指令。
