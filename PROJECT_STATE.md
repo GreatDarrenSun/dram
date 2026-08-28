@@ -71,35 +71,36 @@ A new executor must compare the later reports/evidence against each U-001…U-00
 
 ## 5. Freshness boundary
 
-No repository commit newer than 2026-08-21 was observed during this bootstrap.
+No repository commit newer than 2026-08-21 was observed during this bootstrap before the control-plane change itself.
 
-Therefore any work performed after 2026-08-21 in local workspaces, ChatGPT, Codex, Cimi, generated reports or release folders is currently:
+Therefore technical work performed after 2026-08-21 in local workspaces, ChatGPT, Codex, Cimi, generated reports or release folders is currently:
 
 `[NEEDS_SYNC_TO_GITHUB_CONTROL_PLANE]`
 
-Do not infer those results into this file without evidence or an explicit sync task.
+Do not infer those technical results into this file without evidence or an explicit sync task.
 
 ## 6. Current project-control status
 
 | Area | Status | Meaning |
 |---|---|---|
 | GitHub connection | CONFIRMED | ChatGPT can access the repository |
-| AI start entry | ADDED_IN_PR | `AI_START_HERE.md` |
-| Shared agent rules | ADDED_IN_PR | `AGENTS.md` |
-| State ledger | ADDED_IN_PR | this file |
-| Decision ledger | PENDING_IN_THIS_PR | see `DECISIONS.md` |
-| Task ledger | PENDING_IN_THIS_PR | see `TASKS.md` |
-| Evidence index | PENDING_IN_THIS_PR | see `evidence/README.md` |
-| Report index | PENDING_IN_THIS_PR | see `reports/README.md` |
+| AI start entry | PRESENT | `AI_START_HERE.md` |
+| Shared agent rules | PRESENT | `AGENTS.md` |
+| State ledger | PRESENT | this file |
+| Decision ledger | PRESENT | `DECISIONS.md` |
+| Task ledger | PRESENT | `TASKS.md` |
+| ChatGPT Project instructions | PRESENT | `CHATGPT_PROJECT_INSTRUCTIONS.md` |
+| Evidence index | PRESENT | `evidence/README.md` |
+| Report index | PRESENT | `reports/README.md` |
+| Workflow/state-sync policy | PRESENT | `docs/` |
 | HIGH-unknown reconciliation | OPEN | first recommended technical-control task |
 | Post-2026-08-21 external-work sync | OPEN | requires explicit evidence import |
 
 ## 7. Next recommended sequence
 
-1. Merge the AI-project-brain bootstrap PR after review.
-2. Run **STATE-SYNC-001**: reconcile U-001…U-006 using existing repository/local evidence; do not rescan everything.
-3. Run **STATE-SYNC-002**: import the latest post-2026-08-21 validated project milestones into structured GitHub summaries.
-4. Only after those two sync tasks, treat `PROJECT_STATE.md` as the authoritative current-state entry for new AI sessions.
+1. Run **STATE-SYNC-001**: reconcile U-001…U-006 using existing repository/local evidence; do not rescan everything.
+2. Run **STATE-SYNC-002**: import the latest post-2026-08-21 validated project milestones into structured GitHub summaries.
+3. After those two sync tasks, use `PROJECT_STATE.md` as the authoritative current-state entry for new AI sessions.
 
 ## 8. Rule for future updates
 
