@@ -1,0 +1,54 @@
+# DDR6 FPGA SLT 项目亮点与关键技术
+
+## 一、项目亮点
+
+### MC
+
+**1. 面向 DDR6 SLT 的可编程 MC 架构**
+基于 FPGA 构建 DDR6 Memory Controller，支持协议、Timing、Refresh、Training、地址空间及测试流程灵活配置，满足硅后验证对**可控、可观测、可调试**的要求。
+
+**2. CPGC/ALPG 类测试能力内建**
+在 MC 后端集成可编程测试引擎，直接面向 **Rank / Bank / Row / Column** 产生测试流量，支持 Pattern、PRBS、连续读写、地址扫描及压力测试，突破传统 Host 流量测试粒度限制。
+
+**3. MC/PHY 解耦，形成可复用平台架构**
+MC 与 PHY 采用 **DFI / Simplified DFI** 标准化接口，实现协议控制与高速物理接口解耦，可适配不同 PHY、不同 DDR6 器件及后续平台演进。
+
+### PHY
+
+**4. 面向 DDR6 19.2Gbps 的 FPGA PHY 架构**
+针对 DDR6 最高 **19.2Gbps** 速率，采用 **Versal FPGA + TC 芯片**协同架构，通过多级并行化和 Gearbox 解决 FPGA 内部工作频率与 DDR6 高速 IO 之间的速率差距。
+
+**5. 高速接口与训练测试一体化**
+PHY 同时具备高速数据收发、时钟/数据对齐、Delay 调节、Training、Margin Sweep 和状态监测能力，为 DDR6 功能验证、性能压力及高速边界测试提供统一物理层平台。
+
+---
+
+# 二、关键技术
+
+## MC 关键技术
+
+**① DDR6 协议与命令控制**
+实现 DDR6 Command、Bank 状态管理、地址映射、Refresh/RFM、PRAC、MR/FSP、Training 等协议控制，支持 DDR6 新增及变化 Feature。
+
+**② 参数化 Timing Scheduler**
+建立统一 AC Timing Engine，对 `tRCD / tRP / tRAS / tRC / tRRD / tFAW / tCCD / tWTR / tRFC / tREFI` 等约束进行硬件检查，支持 Timing 参数动态配置及 Margin 测试。
+
+**③ CPGC/ALPG 可编程测试引擎**
+构建 Address Generator、Data Pattern Generator、Sequence Controller、Compare 和 Error Logger，实现测试 Pattern、地址顺序、读写组合及循环次数可配置，并与 Refresh、Timing Scheduler 协同运行。
+
+## PHY 关键技术
+
+**④ Simplified DFI 多 Phase 并行接口**
+面向 DDR6 19.2Gbps 设计 **1:8 多 Phase MC/PHY 接口**，完成 Command/Data 多 Phase 打包与解包，降低 MC 核心工作频率并支撑最高速率运行。
+
+**⑤ Versal + TC 高速 DDR6 PHY**
+基于 **X5IO + TC 1:4** 架构，实现 CA/DQ/DQS 的高速串并转换、Gearbox、时钟域转换、Read Capture 和 Write Launch，打通 FPGA 到 DDR6 Device 的高速数据链路。
+
+**⑥ DDR6 Training 与 Margin 测试**
+实现 CA/DQ/DQS 对齐、TX/RX Delay Sweep、Read/Write Training、Deskew、Eye Window 搜索及最佳采样点选择，并输出 Margin、Fail Bit 和训练结果，为硅后问题定位提供数据支撑。
+
+---
+
+### 项目定位
+
+**构建“DDR6 MC + 高速 PHY + CPGC/ALPG + Training + Margin + Error Diagnosis”一体化 FPGA SLT 平台，形成面向 DDR6 硅后验证的自主可控技术底座。**
