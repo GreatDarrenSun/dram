@@ -1,0 +1,19 @@
+一、值得肯定的点
+1、保留“按 Bank 生成/执行 PRE”的骨架；
+2、QCF 四集合（18.2.6 mixed PREdb 例子：CLOSED member 不产生 BAT/BSM/OpenRow 效应）与 ACT lifetime generation 防 ABA（19.2）逻辑自洽
+二、建议的点
+1、REF和PRE增加关联性，PREdb与REFdb,PREab与REFab,在执行REF之前，需要保证BANK处于IDLE。于是有了PRE指令。
+2、每条 TSA 增加 “Spec Ref（页码/表号）” 列，满足套件“结论可溯源”要求；
+3、明确RFM与PRAC的关系，考虑设计的复用性与独立性
+4、28章节，考虑PHY自行training。训练好后再交由MC调度。MC可直接透传到PHY的维护接口。
+5、在DFI只考虑1：4和1：8的情况下，对于连续的BL24读取，会存在数据起始点发生变化的情况，因为会两个BL24放在3个DFI clk中，就是数据可能从DFI_DATA0开始，也可能从DFI_DATA4开始，这可能也是DFI增加1：6和1：8频率比的的原因，需进一步确定后面的设计难点。
+三、缺失的点
+1、三个PRAC协议面缺失（ACI、PRAC MR 接口、alert编码细节）
+2、Spec中tRPab = nACU + 21ns，tRPpb/db = nACU + 18ns，，注意结合ACU参数
+3、BAT 计账：spec 公式可推导却整体挂UNKNOWN
+4、RIR 机制缺失：tREFI/2 时 REF 命令需带 C2:CA4 指示（MR4:OP[5]=1）
+5、ABO_Recovery 期间命令白名单未设计
+6、DSDM（DQ swizzling discovery）缺失：训练发现的 DQ 交换需回灌 Read Assembly/Write Payload 字节通道与 Geometry 映射
+7、V1 固定采用 Level-2 Direct Bit-level Mapping；允许非连续 bit 与 permutation，不支持 XOR / Hash。建议增加一种XOR，将访问相同bank group相同bank中不同行的两个命令请求分散到了不同bank group的不同bank，可进一步提高效率。
+四、错误的点
+1、PREab 关闭多 bank 时 tRP 随 member 数变化 → Timing Engine 的 tRP expiry、latest_safe_start、tRC、PDE 时序全链受影响；仅按常数 tRP 会违反协议。
