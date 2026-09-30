@@ -1,0 +1,227 @@
+TASK_ID=codex_ddr6_0918_target_oracle_extract_v1
+TARGET_MODEL=Claude Code / Opus 高能力代码模型
+REASONING_LEVEL=high（启用 extended thinking）
+TASK_TYPE=DDR6 第三方 Device Model 静态证据提取与差分仿真 oracle 生成
+
+你可以读取：
+1. 完整目标源码 DDR6_MODEL_0918.sv
+2. 对应 DDR6 规范
+3. 必要的编译 filelist、宏定义和仿真环境
+
+目标：
+为 clean-room DDR6 model 提取“可验证、可复现”的目标模型事实和差分 trace。
+不要重写或复制整个第三方源码，不要根据 DDR5 或常识补全。
+找不到证据时必须写 UNKNOWN，禁止猜测。
+
+隐私与输出限制：
+- 输出中删除用户名、电脑名、绝对路径、邮箱、许可证信息和服务器地址。
+- 不要返回完整源文件。
+- 单处源码引用最多给出必要的 1–5 行；优先提供文件名、行号、task/function/always 名称和行为摘要。
+- 不要执行上传、联网或向外部服务发送源码。
+- 所有结论都必须区分：
+  TARGET_SOURCE_FACT
+  SPEC_FACT
+  SIMULATION_OBSERVATION
+  INFERENCE
+  UNKNOWN
+
+请独立核对以下问题，不要把已有逆向文档当成正确答案。
+
+一、T027/T028 与 CK-Sync
+
+提取目标模型中 T027/T028 的精确定义：
+
+1. Start event 和 end event。
+2. 计时 scope：PSD、rank、全局还是每条 CA/CS 通道。
+3. 精确公式、时间单位、ceil/floor/even rounding。
+4. T027 是否等于 max(4ns, 8nCK)。
+5. T028 是否为 8nCK CA precondition。
+6. 命令在边界前 1ps、恰好边界、边界后 1ps时的行为。
+7. 违例是仅打印、忽略命令、取消命令还是改变状态。
+8. ONEP6、ONEP12、TWOP3、TWOP6 是否不同。
+9. CK-Sync 的目标版本 MR5 编码、CA00/CA18 序列和 CS pre/post 要求。
+
+二、完整 MR/FSP 类型和复位映射
+
+生成 MR0–MR255 的完整表，每个 MR 必须有一行，字段为：
+
+MA_DEC
+MA_HEX
+PSD0_RESET
+PSD1_RESET
+ACCESS_CLASS
+WRITABLE_MASK
+READABLE_MASK
+DYNAMIC_READ
+FSP_DEPENDENT
+FSP_INDEX_SOURCE
+MR_PAGE
+CONSUMER
+SIDE_EFFECT
+PROFILE_CONDITION
+SOURCE_LINES
+CONFIDENCE
+
+ACCESS_CLASS 只能使用：
+RW、RO、WO、MIXED、DYNAMIC_RO、RFU、UNKNOWN。
+
+另外确认：
+
+1. FSP-OP/FSP-WR 的选择寄存器和切换时刻。
+2. 普通 PDX、PDX_FC、SRX、RESET 是否提交 requested FSP。
+3. MR8/MR9 在目标版本中的准确职责。
+4. 2 PSD × 2 FSP × 4 MRP × 256 MR 是否是真实 backing shape。
+5. direct FSP 和 paged FSP 是否同时存在，二者如何寻址。
+6. 每个非零复位值及配置相关复位值的来源。
+
+三、DCA
+
+提取所有参与实际延迟计算的 DCA 字段，包括但不限于：
+
+- MR62–MR69
+- MR162–MR187 或目标版本对应地址
+- DQ0–DQ11
+- DQS_t/DQS_c
+- QCLK/IBCLK/QBCLK
+- READ/WRITE 路径
+
+每项输出：
+
+MR/bit
+signed_encoding
+legal_range
+ps_per_step
+target_signal
+read_or_write
+profile_mapping
+positive_direction
+negative_direction
+actual_delay_expression
+source_lines
+
+必须回答：
+
+1. per-DQ 值是否真正改变 DQ 驱动/采样事件时间。
+2. x12 的 DQ6–DQ11 是独立配置、复用 DQ0–DQ5，还是未实现。
+3. DCA 是纯数字事件延迟，还是包含模拟/电压/eye/termination 模型。
+4. 非法编码如何处理。
+5. global DCA 与 per-DQ DCA 如何叠加。
+6. DQ 和 DQS 同时刻更新时的调度顺序。
+
+四、MR191–MR198 PPR availability
+
+精确提取：
+
+1. 每个 MR 对应的 BG。
+2. OP[7:6]、OP[5:4]、OP[3:2]、OP[1:0] 分别对应哪个 BG/bank。
+3. 00、01、10、11 的精确定义。
+4. hPPR 和 sPPR 的初始资源数。
+5. repair、undo、lock、失败操作后编码如何变化。
+6. RESET 后如何恢复。
+7. MR191–MR198 是存储值还是 MRR 时动态生成。
+8. ARRAYSET0/1/Z 是否改变 availability 或只改变修复行读出数据。
+9. 所有 profile 是否采用相同 packing。
+
+五、CRC/metadata 目标版本
+
+分别对 ONEP6、ONEP12、TWOP3、TWOP6 输出：
+
+1. CRC 使能 MR 和 bit。
+2. CRC 算法名称、多项式、初值、bit 顺序和最终异或。
+3. x3/x6/x12 每个 burst 使用几个 CRC 实例。
+4. CRC 输入 bit 的准确排列顺序。
+5. CRC 在 UI/DQ 中的准确位置。
+6. metadata 模式的 MR/bit 编码。
+7. MD_OFF、MD_8B_A、MD_8B_B、MD_16B 的列地址限制。
+8. metadata 写入、存储、读回重组是否全部接线。
+9. CRC 错误状态 MR/bit。
+10. ALERT 延迟、脉宽、极性及共享规则。
+11. CRC/metadata 配置是在第一条 ACT 后锁定，还是始终可写。
+12. 目标代码是否实现 CRC-8-D136、CRC-4 或 CRC-4-SC-8。
+13. 如果源码注释、MR 表和数据路径相互冲突，分别列出，不要自行选一个作为正确答案。
+
+六、其他目标等价阻塞项
+
+同时提取：
+
+1. PDX_FC 提交 FSP 的准确时刻。
+2. MRR DQS preamble/postamble 和首尾 toggle 数量。
+3. WRITE_RMW 是否有真实命令编码，还是仅 timing class。
+4. timing violation 是否全部 report-only；列出会抑制命令或改变状态的例外。
+5. 96Gb/128Gb refresh timing 是否有有效赋值。
+6. optional ARRAYSET 修复行的准确填充值和触发条件。
+7. ODT、Vref、DFE 是否存在真实电气行为，还是仅保存 MR。
+8. metadata read event 是否存在真实触发者。
+
+七、差分仿真 trace
+
+如果环境能够合法运行目标模型，请生成最小定向测试，不修改目标源码。
+
+至少覆盖：
+
+TRACE001 T027 边界前/边界/边界后
+TRACE002 T028 边界前/边界/边界后
+TRACE003 requested FSP → 普通 PDX
+TRACE004 requested FSP → PDX_FC
+TRACE005 per-DQ DCA -3/0/+3
+TRACE006 MR191 初始、sPPR 消耗、hPPR 消耗、undo、lock、reset
+TRACE007 每个 profile 的 CRC 正确和单 bit 错误
+TRACE008 四种 metadata 模式写读
+TRACE009 MRR DQS envelope
+TRACE010 WRITE_RMW 或 TWOP3 RMW timing class
+
+trace CSV 使用统一字段：
+
+case_id
+profile
+time_ps
+event
+CK_t
+CK_c
+CS
+CA
+DQ
+DQS_t
+DQS_c
+ALERT
+cmd_current_0
+cmd_current_1
+active_fsp
+requested_fsp
+relevant_mr
+timing_error_id
+source_observation
+
+不要在 CSV 中包含绝对路径、机器名或用户名。
+
+八、输出文件
+
+请输出以下三个结果：
+
+1. TARGET_ORACLE_FACTS.md
+   - 上述六部分的结论
+   - 每条结论的源码行号和证据类型
+   - UNKNOWN/冲突清单
+   - 不复制大段源码
+
+2. TARGET_MR_FSP_MAP.csv
+   - 完整 MR0–MR255 映射
+   - 必须正好 256 行数据
+
+3. TARGET_ORACLE_TRACE.csv
+   - TRACE001–TRACE010
+   - 如果无法仿真，仍生成表头，并在对应 case 写
+     SIMULATION_NOT_AVAILABLE
+
+最后输出验收摘要：
+
+STATIC_ITEMS_CONFIRMED=<数量>
+STATIC_ITEMS_UNKNOWN=<数量>
+TRACE_CASES_PASS=<数量>
+TRACE_CASES_MISSING=<数量>
+MR_ROWS=<必须为256>
+PERSONAL_INFORMATION_INCLUDED=NO
+TARGET_SOURCE_COPIED_IN_FULL=NO
+OVERALL_ORACLE_STATUS=READY / PARTIAL / BLOCKED
+
+不要把“符合规范”当成“与目标模型等价”。两者必须分别报告。
